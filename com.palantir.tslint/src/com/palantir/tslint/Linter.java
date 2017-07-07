@@ -17,23 +17,24 @@
 package com.palantir.tslint;
 
 import java.io.File;
-import java.io.IOException;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.logging.Logger;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.ui.texteditor.MarkerUtilities;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.base.Charsets;
 import com.google.common.collect.Maps;
-import com.google.common.io.Files;
+import com.palantir.tslint.failure.LintResult;
 import com.palantir.tslint.failure.RuleFailure;
 import com.palantir.tslint.failure.RuleFailurePosition;
+import com.palantir.tslint.failure.RuleSeverity;
 import com.palantir.tslint.services.Bridge;
 import com.palantir.tslint.services.Request;
 
@@ -47,11 +48,11 @@ final class Linter {
         this.bridge = null;
     }
 
-    public void lint(IResource resource, String configurationPath) throws IOException {
+    public void lint(IResource resource, String configurationPath) {
         String resourceName = resource.getName();
         if (resource instanceof IFile &&
-            (resourceName.endsWith(".ts") || resourceName.endsWith(".tsx")) &&
-            !resourceName.endsWith(".d.ts")) {
+                (resourceName.endsWith(".ts") || resourceName.endsWith(".tsx")) &&
+                !resourceName.endsWith(".d.ts")) {
             IFile file = (IFile) resource;
             String resourcePath = resource.getRawLocation().toOSString();
 
@@ -60,20 +61,21 @@ final class Linter {
 
             // get a bridge
             if (this.bridge == null) {
-                String configuration = Files.toString(new File(configurationPath), Charsets.UTF_8);
-                Request configurationRequest = new Request("setConfiguration", configuration);
+                IPath projectLocation = resource.getProject().getRawLocation();
+                String projectLocationPath = projectLocation.toOSString();
+                File projectFile = new File(projectLocationPath);
+                Request projectDirectoryRequest = new Request("setProjectDirectory", projectFile);
 
                 this.bridge = new Bridge();
-                this.bridge.call(configurationRequest, Void.class);
+                this.bridge.call(projectDirectoryRequest, Void.class);
             }
 
             Request request = new Request("lint", resourcePath);
-            String response = this.bridge.call(request, String.class);
+            LintResult response = this.bridge.call(request, LintResult.class);
 
             if (response != null) {
-                ObjectMapper objectMapper = new ObjectMapper();
-                RuleFailure[] ruleFailures = objectMapper.readValue(response, RuleFailure[].class);
-                for (RuleFailure ruleFailure : ruleFailures) {
+                Logger.getLogger("Linter").info(resourceName + " failures: " + Arrays.asList(response.getFailures()));
+                for (RuleFailure ruleFailure : response.getFailures()) {
                     addMarker(ruleFailure);
                 }
             }
@@ -88,13 +90,21 @@ final class Linter {
             RuleFailurePosition startPosition = ruleViolation.getStartPosition();
             RuleFailurePosition endPosition = ruleViolation.getEndPosition();
 
+            RuleSeverity severity = ruleViolation.getRuleSeverity();
+
+            int markerSeverity = IMarker.SEVERITY_WARNING;
+            switch (severity) {
+                case ERROR:
+                    markerSeverity = IMarker.SEVERITY_ERROR;
+            }
+
             Map<String, Object> attributes = Maps.newHashMap();
             attributes.put(IMarker.LINE_NUMBER, startPosition.getLine() + 1);
             attributes.put(IMarker.CHAR_START, startPosition.getPosition());
             attributes.put(IMarker.CHAR_END, endPosition.getPosition());
             attributes.put(IMarker.MESSAGE, ruleViolation.getFailure());
             attributes.put(IMarker.PRIORITY, IMarker.PRIORITY_NORMAL);
-            attributes.put(IMarker.SEVERITY, IMarker.SEVERITY_WARNING);
+            attributes.put(IMarker.SEVERITY, markerSeverity);
 
             MarkerUtilities.createMarker(file, attributes, MARKER_TYPE);
         } catch (CoreException e) {
@@ -104,7 +114,7 @@ final class Linter {
 
     private void deleteMarkers(IFile file) {
         try {
-            file.deleteMarkers(MARKER_TYPE, false, IResource.DEPTH_ZERO);
+            file.deleteMarkers(MARKER_TYPE, true, IResource.DEPTH_INFINITE);
         } catch (CoreException e) {
             throw new RuntimeException(e);
         }

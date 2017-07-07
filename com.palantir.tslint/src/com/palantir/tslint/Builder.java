@@ -17,7 +17,6 @@
 package com.palantir.tslint;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.Map;
 
 import org.eclipse.core.resources.IProject;
@@ -73,7 +72,7 @@ public final class Builder extends IncrementalProjectBuilder {
         delta.accept(new DeltaVisitor());
     }
 
-    private void lint(IResource resource) throws IOException {
+    private void lint(IResource resource) {
         IProject project = this.getProject();
         IScopeContext projectScope = new ProjectScope(project);
         IEclipsePreferences prefs = projectScope.getNode(TSLintPlugin.ID);
@@ -96,11 +95,7 @@ public final class Builder extends IncrementalProjectBuilder {
     private class ResourceVisitor implements IResourceVisitor {
         @Override
         public boolean visit(IResource resource) {
-            try {
-                lint(resource);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            lint(resource);
 
             return true;
         }
@@ -114,11 +109,7 @@ public final class Builder extends IncrementalProjectBuilder {
             switch (delta.getKind()) {
                 case IResourceDelta.ADDED:
                 case IResourceDelta.CHANGED:
-                    try {
-                        lint(resource);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
+                    lint(resource);
                     break;
             }
 

@@ -5,12 +5,14 @@
     "compile": "tsc -p src/bridge"
   },
   "dependencies": {
+    "@types/glob": "^5.0.30",
+    "glob": "7.1.2",
     "tslint": "~5.2.0",
     "typescript": "2.3.4"
   },
   "devDependencies": {
+    "@types/node": "^8.0.9",
     "grunt": "1.0.1",
     "grunt-ts": "5.5.1"
   }
 }
-

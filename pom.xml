@@ -14,7 +14,8 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 -->
-<project>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.palantir</groupId>
@@ -29,17 +30,18 @@
   </modules>
 
   <properties>
-    <tycho.version>0.18.1</tycho.version>
-    <tycho-extras.version>0.18.1</tycho-extras.version>
+    <tycho.version>1.0.0</tycho.version>
+    <tycho-extras.version>1.0.0</tycho-extras.version>
 
     <kepler-repo.url>http://download.eclipse.org/releases/kepler</kepler-repo.url>
+    <neon-repo.url>http://download.eclipse.org/releases/neon</neon-repo.url>
     <tycho-repo.url>https://oss.sonatype.org/content/groups/public/</tycho-repo.url>
   </properties>
 
   <repositories>
     <repository>
-      <id>kepler</id>
-      <url>${kepler-repo.url}</url>
+      <id>eclipse</id>
+      <url>${neon-repo.url}</url>
       <layout>p2</layout>
     </repository>
   </repositories>
