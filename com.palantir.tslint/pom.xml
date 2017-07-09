@@ -27,4 +27,63 @@
   <artifactId>com.palantir.tslint</artifactId>
   <packaging>eclipse-plugin</packaging>
 
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.0.0</version>
+        <configuration>
+          <filesets>
+            <fileset>
+              <directory>${basedir}/bin</directory>
+            </fileset>
+            <fileset>
+              <directory>${basedir}/.tscache</directory>
+            </fileset>
+          </filesets>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>com.github.eirslett</groupId>
+        <artifactId>frontend-maven-plugin</artifactId>
+        <version>1.4</version>
+        <configuration>
+          <nodeVersion>v6.9.5</nodeVersion>
+          <installDirectory>${project.build.directory}</installDirectory>
+        </configuration>
+        <executions>
+          <execution>
+            <id>install node</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>install-node-and-npm</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>run npm install</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>npm</goal>
+            </goals>
+            <configuration>
+              <arguments>install</arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>run npm script compile</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>npm</goal>
+            </goals>
+            <configuration>
+              <arguments>run -s compile</arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
 </project>

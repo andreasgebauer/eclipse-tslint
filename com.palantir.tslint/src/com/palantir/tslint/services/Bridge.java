@@ -153,7 +153,7 @@ public final class Bridge {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        File bridgeFile = new File(bundleFile, "bin/bridge.js");
+        File bridgeFile = new File(bundleFile, "bin/main.js");
         String bridgePath = bridgeFile.getAbsolutePath();
 
         // construct the arguments

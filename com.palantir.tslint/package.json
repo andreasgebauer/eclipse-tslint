@@ -1,6 +1,9 @@
 {
   "name": "eclipse-tslint",
   "version": "3.7.0",
+  "scripts": {
+    "compile": "tsc -p src/bridge"
+  },
   "dependencies": {
     "tslint": "~5.2.0",
     "typescript": "2.3.4"
