@@ -42,4 +42,11 @@ public final class RuleFailurePosition {
 	public int getPosition() {
 		return this.position;
 	}
+
+    @Override
+    public String toString() {
+        return "pos [char=" + this.character + ", " + this.line + ":" + this.position + "]";
+    }
+
+
 }

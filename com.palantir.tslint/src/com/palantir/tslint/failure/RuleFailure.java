@@ -70,4 +70,9 @@ public final class RuleFailure {
 	public RuleFailurePosition getEndPosition() {
 		return this.endPosition;
 	}
+
+    @Override
+    public String toString() {
+        return "RuleFailure [rule=" + this.ruleName + ", start=" + this.startPosition + ", end=" + this.endPosition + "]";
+    }
 }
