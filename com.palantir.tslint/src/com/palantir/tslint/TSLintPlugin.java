@@ -16,10 +16,6 @@
 
 package com.palantir.tslint;
 
-import java.io.File;
-import java.io.IOException;
-
-import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 
@@ -43,13 +39,6 @@ public final class TSLintPlugin extends AbstractUIPlugin {
     public void stop(BundleContext context) throws Exception {
         plugin = null;
         super.stop(context);
-    }
-
-    public static String getLinterPath() throws IOException {
-        File bundleFile = FileLocator.getBundleFile(TSLintPlugin.getDefault().getBundle());
-        File tslintFile = new File(bundleFile, "node_modules/tslint/bin/tslint-cli.js");
-
-        return tslintFile.getAbsolutePath();
     }
 
     public static TSLintPlugin getDefault() {
