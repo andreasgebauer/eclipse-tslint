@@ -36,6 +36,7 @@ import com.palantir.tslint.failure.RuleFailure;
 import com.palantir.tslint.failure.RuleFailurePosition;
 import com.palantir.tslint.failure.RuleSeverity;
 import com.palantir.tslint.services.Bridge;
+import com.palantir.tslint.services.NodeFuckedUpException;
 import com.palantir.tslint.services.Request;
 
 final class Linter {
@@ -56,29 +57,41 @@ final class Linter {
             IFile file = (IFile) resource;
             String resourcePath = resource.getRawLocation().toOSString();
 
+            Logger.getLogger("Linter").info("Analyzing " + resourcePath);
+
             // remove any pre-existing markers for the given file
             deleteMarkers(file);
 
-            // get a bridge
-            if (this.bridge == null) {
-                IPath projectLocation = resource.getProject().getRawLocation();
-                String projectLocationPath = projectLocation.toOSString();
-                File projectFile = new File(projectLocationPath);
-                Request projectDirectoryRequest = new Request("setProjectDirectory", projectFile);
+            int tries = 0;
+            boolean error = false;
+            do {
+                try {
+                    // get a bridge
+                    if (this.bridge == null) {
+                        IPath projectLocation = resource.getProject().getRawLocation();
+                        String projectLocationPath = projectLocation.toOSString();
+                        File projectFile = new File(projectLocationPath);
+                        Request projectDirectoryRequest = new Request("setProjectDirectory", projectFile);
 
-                this.bridge = new Bridge();
-                this.bridge.call(projectDirectoryRequest, Void.class);
-            }
+                        this.bridge = new Bridge();
+                        this.bridge.call(projectDirectoryRequest, Void.class);
+                    }
 
-            Request request = new Request("lint", resourcePath);
-            LintResult response = this.bridge.call(request, LintResult.class);
-
-            if (response != null) {
-                Logger.getLogger("Linter").info(resourceName + " failures: " + Arrays.asList(response.getFailures()));
-                for (RuleFailure ruleFailure : response.getFailures()) {
-                    addMarker(ruleFailure);
+                    Request request = new Request("lint", resourcePath);
+                    LintResult response = this.bridge.call(request, LintResult.class);
+                    if (response != null) {
+                        Logger.getLogger("Linter").info(resourceName + " failures: " + Arrays.asList(response.getFailures()));
+                        for (RuleFailure ruleFailure : response.getFailures()) {
+                            addMarker(ruleFailure);
+                        }
+                    }
+                    error = false;
+                } catch (NodeFuckedUpException e) {
+                    this.bridge.dispose();
+                    error = true;
                 }
-            }
+            } while (error && tries++ <= 3);
+
         }
     }
 

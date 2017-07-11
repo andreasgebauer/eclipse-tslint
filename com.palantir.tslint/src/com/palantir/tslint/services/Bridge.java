@@ -25,6 +25,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.util.List;
+import java.util.logging.Logger;
 
 import org.eclipse.core.runtime.FileLocator;
 
@@ -53,6 +54,7 @@ public final class Bridge {
 
     private Process nodeProcess;
     private BufferedReader nodeStdout;
+    private BufferedReader nodeErrout;
     private PrintWriter nodeStdin;
 
     private final ObjectMapper mapper;
@@ -96,10 +98,13 @@ public final class Bridge {
     }
 
     public void dispose() {
+        this.nodeProcess.destroy();
+
         this.nodeStdin.close();
 
         try {
             this.nodeStdout.close();
+            this.nodeErrout.close();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -120,7 +125,10 @@ public final class Bridge {
 
             // process errors and logger statements
             if (line == null) {
-                throw new IllegalStateException("The node process has crashed.");
+                // restart bridge
+                String errLine = this.nodeErrout.readLine();
+                Logger.getLogger("Linter").severe("Error node: " + errLine);
+                throw new NodeFuckedUpException(errLine);
             } else if (line.startsWith(ERROR_PREFIX)) {
                 // remove prefix
                 line = line.substring(ERROR_PREFIX.length(), line.length());
@@ -170,6 +178,7 @@ public final class Bridge {
             throw new RuntimeException(e);
         }
         this.nodeStdout = new BufferedReader(new InputStreamReader(this.nodeProcess.getInputStream(), Charsets.UTF_8));
+        this.nodeErrout = new BufferedReader(new InputStreamReader(this.nodeProcess.getErrorStream(), Charsets.UTF_8));
         this.nodeStdin = new PrintWriter(new OutputStreamWriter(this.nodeProcess.getOutputStream(), Charsets.UTF_8), true);
 
         // add a shutdown hook to destroy the node process in case its not properly disposed
