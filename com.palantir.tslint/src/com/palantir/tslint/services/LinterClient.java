@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Palantir Technologies, Inc.
+ * Copyright 2013 Palantir Technologies, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,25 +14,14 @@
  * limitations under the License.
  */
 
-module.exports = function(grunt) {
-  'use strict';
+package com.palantir.tslint.services;
 
-  // project configuration
-  grunt.initConfig({
-    ts: {
-      options: {
-        sourceMap: false
-      },
-      build: {
-        src: ['src/bridge/*.ts'],
-        out: 'bin/bridge.js'
-      }
-    }
-  });
+/**
+ * @author andreas
+ */
+public interface LinterClient {
 
-  // load NPM tasks
-  grunt.loadNpmTasks('grunt-ts');
+    <T> T call(Request request, Class<T> resultType);
 
-  // other tasks
-  grunt.registerTask('default', 'ts');
-};
+    void dispose();
+}

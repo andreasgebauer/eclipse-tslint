@@ -16,23 +16,12 @@
 
 package com.palantir.tslint.services;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.util.List;
-import java.util.logging.Logger;
 
 import org.eclipse.core.runtime.FileLocator;
 
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.type.TypeFactory;
-import com.google.common.base.Charsets;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -45,109 +34,22 @@ import com.palantir.tslint.TSLintPlugin;
  */
 public final class Bridge {
 
-    private static final String LINE_SEPARATOR = System.getProperty("line.separator");
-    private static final String ERROR_PREFIX = "ERROR: ";
-    private static final String RESULT_PREFIX = "RESULT: ";
-
     private static final String OS_NAME = System.getProperty("os.name");
     private static final Splitter PATH_SPLITTER = Splitter.on(File.pathSeparatorChar);
 
     private Process nodeProcess;
-    private BufferedReader nodeStdout;
-    private BufferedReader nodeErrout;
-    private PrintWriter nodeStdin;
 
-    private final ObjectMapper mapper;
+    private LinterClient client;
 
     public Bridge() {
-        this.mapper = new ObjectMapper();
-
         // start the node process
         this.start();
-    }
-
-    public <T> T call(Request request, Class<T> resultType) {
-        checkNotNull(request);
-        checkNotNull(resultType);
-
-        JavaType type = TypeFactory.defaultInstance().uncheckedSimpleType(resultType);
-
-        return this.call(request, type);
-    }
-
-    public synchronized <T> T call(Request request, JavaType resultType) {
-        checkNotNull(request);
-        checkNotNull(resultType);
-
-        // process the request
-        String resultJson;
-        try {
-            String requestJson = this.mapper.writeValueAsString(request);
-
-            resultJson = this.processRequest(requestJson);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        // convert the JSON result into a Java object
-        try {
-            return this.mapper.readValue(resultJson, resultType);
-        } catch (IOException e) {
-            throw new RuntimeException("Error parsing result: " + resultJson, e);
-        }
     }
 
     public void dispose() {
         this.nodeProcess.destroy();
 
-        this.nodeStdin.close();
-
-        try {
-            this.nodeStdout.close();
-            this.nodeErrout.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
         this.nodeProcess = null;
-    }
-
-    private String processRequest(String requestJson) throws IOException {
-        checkNotNull(requestJson);
-
-        // write the request JSON to the bridge's stdin
-        this.nodeStdin.println(requestJson);
-
-        // read the response JSON from the bridge's stdout
-        String resultJson = null;
-        do {
-            String line = this.nodeStdout.readLine();
-
-            // process errors and logger statements
-            if (line == null) {
-                // restart bridge
-                String errLine = this.nodeErrout.readLine();
-                Logger.getLogger("Linter").severe("Error node: " + errLine);
-                throw new NodeFuckedUpException(errLine);
-            } else if (line.startsWith(ERROR_PREFIX)) {
-                // remove prefix
-                line = line.substring(ERROR_PREFIX.length(), line.length());
-                // put newlines back
-                line = line.replaceAll("\\\\n", LINE_SEPARATOR); // put newlines back
-                // replace soft tabs with hardtabs to match Java's error stack trace.
-                line = line.replaceAll("    ", "\t");
-
-                throw new RuntimeException("The following request caused an error to be thrown:" + LINE_SEPARATOR
-                        + requestJson + LINE_SEPARATOR
-                        + line);
-            } else if (line.startsWith(RESULT_PREFIX)) {
-                resultJson = line.substring(RESULT_PREFIX.length());
-            } else { // log statement
-                System.out.println(line);
-            }
-        } while (resultJson == null);
-
-        return resultJson;
     }
 
     private void start() {
@@ -177,12 +79,12 @@ public final class Bridge {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        this.nodeStdout = new BufferedReader(new InputStreamReader(this.nodeProcess.getInputStream(), Charsets.UTF_8));
-        this.nodeErrout = new BufferedReader(new InputStreamReader(this.nodeProcess.getErrorStream(), Charsets.UTF_8));
-        this.nodeStdin = new PrintWriter(new OutputStreamWriter(this.nodeProcess.getOutputStream(), Charsets.UTF_8), true);
-
         // add a shutdown hook to destroy the node process in case its not properly disposed
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread());
+
+        int port = 12345;
+
+        this.client = new LinterSocketClient(port);
     }
 
     private static File findNode() {
@@ -224,5 +126,9 @@ public final class Bridge {
                 process.destroy();
             }
         }
+    }
+
+    public <T> T call(Request request, Class<T> resultType) {
+        return this.client.call(request, resultType);
     }
 }
