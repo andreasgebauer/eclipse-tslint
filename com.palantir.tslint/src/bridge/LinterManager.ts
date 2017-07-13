@@ -1,139 +1,187 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
-import { Linter, LintResult, ILinterOptions, Configuration, IOptions } from 'tslint';
+import { Linter, LintResult, ILinterOptions, Configuration } from 'tslint';
+import { IOptions, sync } from "glob";
+
+import { Request } from './linterEndpoint';
+import { Logger } from './Logger';
 
 const options = {
-    fix: false,
-    formatter: "json"
+  fix: false,
+  formatter: "json"
 };
 
+interface AngularCli {
+  lint: {
+    files: any,
+    project: string
+  }[]
+}
+
 export class LinterManager {
-    private projectDirectory: string;
+  private projectDirectory: string = null;
 
-    private reuseProgram = true;
+  private reuseProgram = true;
+  private reuseCreatingNewProgram = true;
 
-    private pathToLinter = [];
-    private pathToProgram = [];
-    private lintConfigToProgram = {};
-    private lintConfigToLinter = {};
+  private pathToLinter = [];
+  private pathToProgram = [];
+  private lintConfigToProgram = {};
+  private lintConfigToLinter = {};
 
-    public setProjectDirectory( projectDirectory: string ) {
-        this.projectDirectory = projectDirectory;
+  private logger = new Logger( LinterManager );
 
-        var angularCliJsonPath = projectDirectory + "/.angular-cli.json";
-        var angularCliJson = JSON.parse( fs.readFileSync( angularCliJsonPath, "utf8" ) );
+  processRequest( requestJson: string ) {
+    this.logger.log( "processing", requestJson );
 
-        for ( let lintDir of angularCliJson.lint ) {
-            var configFile = projectDirectory + "/" + lintDir.project;
-            var program = Linter.createProgram( configFile, projectDirectory );
-            var linter = new Linter( options, program );
-            this.pathToLinter.push( {
-                files: lintDir.files,
-                linter: linter
-            } );
-            this.pathToProgram.push( {
-                files: lintDir.files,
-                program: program
-            } );
-        }
+    var request: Request = JSON.parse( requestJson );
+    // invoke the endpoint method with the supplied arguments
+    var method = this[request.method];
+    var result = method.apply( this, request.arguments );
+
+    // convert undefined to null (its basically the Java equivalent of void)
+    if ( result === undefined ) {
+      result = null;
     }
 
-    public lint( path: string ) {
+    // convert the result to JSON and write it to stdout
+    return JSON.stringify( result );
+  }
 
-        var linter = this.getLinter( path );
-
-        if ( !linter ) {
-            return;
-        }
-
-        var contents = fs.readFileSync( path, "utf8" );
-
-        var loadResult = Configuration.findConfiguration( null, path );
-
-        linter.lint( path, contents, loadResult.results );
-
-        var result = linter.getResult();
-
-        var ruleFailures = [];
-        for ( let failure of result.failures ) {
-            ruleFailures.push( failure.toJson() );
-        }
-        result.failures = ruleFailures;
-
-        return result;
+  lint( path: string, projectDir: string ) {
+    this.logger.log( 'getting linter' );
+    var linter = this.getLinter( path, projectDir );
+    if ( !linter ) {
+      return;
     }
 
-    private getLinter( inputFile: string ): Linter {
-        if ( this.reuseProgram ) {
-            const tsConfigFilePath = this.getTsConfigFilePath( inputFile );
+    this.logger.log( 'reading file' );
+    var contents = fs.readFileSync( path, "utf8" );
 
-            if ( !tsConfigFilePath ) {
-                return undefined;
-            }
+    this.logger.log( 'finding config' );
+    var loadResult = Configuration.findConfiguration( null, path );
 
-            let program;
-            if ( this.lintConfigToProgram[tsConfigFilePath] === undefined ) {
-                program = Linter.createProgram( tsConfigFilePath, this.projectDirectory );
-            } else {
-                const oldProgram = this.lintConfigToProgram[tsConfigFilePath];
-                program = this.createProgram( tsConfigFilePath, this.projectDirectory, oldProgram );
-            }
+    this.logger.log( 'linting' );
+    var result = this.doLint( linter, path, contents, loadResult.results );
+    this.logger.log( 'linted' );
 
-            this.lintConfigToProgram[tsConfigFilePath] = program;
-            return new Linter( options, program );
-
-        } else {
-            var program = Linter.createProgram( this.getTsConfigFilePath( inputFile ), this.projectDirectory );
-            return new Linter( options, program );
-        }
+    var ruleFailures = [];
+    for ( let failure of result.failures ) {
+      ruleFailures.push( failure.toJson() );
     }
+    result.failures = ruleFailures;
 
-    private getTsConfigFilePath( inputFile: string ): string {
-        const lintSettings = this.getLintSettings( inputFile );
+    return result;
+  }
 
-        if ( lintSettings ) {
-            return this.projectDirectory + '/' + lintSettings.project;
-        }
+  doLint(
+    linter: Linter,
+    path: string,
+    contents: string,
+    config: Configuration.IConfigurationFile ): any {
 
+    linter.lint( path, contents, config );
+    return linter.getResult();
+  }
+
+  private getLinter( inputFile: string, projectDir: string ): Linter {
+
+    this.logger.log( 'getting tsConfig' );
+
+    const tsConfigFilePath = this.getTsConfigFilePath( inputFile, projectDir );
+
+    if ( this.reuseProgram ) {
+
+      if ( !tsConfigFilePath ) {
         return undefined;
-    }
+      }
 
-    private getLintSettings( inputFile: string ) {
-        var globOptions: IOptions = {};
-        globOptions.cwd = this.projectDirectory;
-
-        for ( let lintSettings of this.readAngularCliJson().lint ) {
-            const files: string[] = sync( lintSettings.files, globOptions );
-            for ( let file of files ) {
-                var match = this.projectDirectory + '/' + file;
-                if ( inputFile == match ) {
-                    return lintSettings;
-                }
-            }
+      let program;
+      if ( this.lintConfigToProgram[tsConfigFilePath] === undefined ) {
+        this.logger.log( 'creating fresh program' );
+        program = Linter.createProgram( tsConfigFilePath, projectDir );
+      } else {
+        this.logger.log( 'reusing program' );
+        const oldProgram = this.lintConfigToProgram[tsConfigFilePath];
+        if ( this.reuseCreatingNewProgram ) {
+          program = this.createProgram( inputFile, tsConfigFilePath, projectDir, oldProgram );
+        } else {
+          program = oldProgram;
         }
+      }
+
+      this.lintConfigToProgram[tsConfigFilePath] = program;
+
+      this.logger.log( 'creating linter' );
+      return new Linter( options, program );
+
+    } else {
+      this.logger.log( 'creating fresh program' );
+      var program = Linter.createProgram( tsConfigFilePath, projectDir );
+      this.logger.log( 'creating linter' );
+      return new Linter( options, program );
+    }
+  }
+
+  private getTsConfigFilePath( inputFile: string, projectDir: string ): string {
+    const lintSettings = this.getLintSettings( inputFile, projectDir );
+
+    if ( lintSettings ) {
+      return lintSettings.project;
     }
 
-    private readAngularCliJson() {
-        const angularCliJsonPath = this.projectDirectory + '/.angular-cli.json';
-        return JSON.parse( fs.readFileSync( angularCliJsonPath, 'utf8' ) );
-    }
+    return undefined;
+  }
 
-    private createProgram = function( configFile, projectDirectory, oldProgram ) {
-        if ( projectDirectory === undefined ) {
-            projectDirectory = path.dirname( configFile );
+  private getLintSettings( inputFile: string, projectDir: string ) {
+    for ( let lintSettings of this.readAngularCliJson( inputFile, projectDir ).lint ) {
+      const files: string[] = sync( lintSettings.files );
+      for ( let file of files ) {
+        if ( inputFile == file ) {
+          return lintSettings;
         }
-        var config = ts.readConfigFile( configFile, ts.sys.readFile ).config;
-        var parseConfigHost = {
-            fileExists: fs.existsSync,
-            readDirectory: ts.sys.readDirectory,
-            readFile: function( file ) { return fs.readFileSync( file, "utf8" ); },
-            useCaseSensitiveFileNames: true,
-        };
-        var parsed = ts.parseJsonConfigFileContent( config, parseConfigHost, projectDirectory );
-        var host = ts.createCompilerHost( parsed.options, true );
-        var program = ts.createProgram( parsed.fileNames, parsed.options, host, oldProgram );
-        return program;
+      }
+    }
+  }
+
+  private readAngularCliJson( inputFile: string, projectDir: string ): AngularCli {
+    const angularConfigFileName = '.angular-cli.json';
+    const angularCliJsonPath = path.join( projectDir, angularConfigFileName );
+
+    const angularCli: AngularCli = JSON.parse( fs.readFileSync( angularCliJsonPath, 'utf8' ) );
+
+    angularCli.lint.forEach(( value, index ) => {
+      angularCli.lint[index].project = path.join( projectDir, value.project );
+      angularCli.lint[index].files = path.join( projectDir, value.files );
+    } );
+
+    return angularCli;
+  }
+
+  private createProgram( inputFile, configFile, projectDirectory, oldProgram ): ts.Program {
+    if ( projectDirectory === undefined ) {
+      projectDirectory = path.dirname( configFile );
+    }
+    this.logger.log( 'reading config file' );
+    var config = ts.readConfigFile( configFile, ts.sys.readFile ).config;
+    var parseConfigHost = {
+      fileExists: fs.existsSync,
+      readDirectory: ts.sys.readDirectory,
+      readFile: function( file ) { return fs.readFileSync( file, "utf8" ); },
+      useCaseSensitiveFileNames: true,
     };
+    this.logger.log( 'parsing json config file' );
+    var parsed = ts.parseJsonConfigFileContent( config, parseConfigHost, projectDirectory );
+    this.logger.log( 'creating compiler host' );
+    var host = ts.createCompilerHost( parsed.options, true );
+    this.logger.log( 'creating program with old program' );
+
+    let fileNames: string[] = [];
+    fileNames.push(inputFile);
+    //    fileNames = parsed.fileNames;
+
+    return ts.createProgram( fileNames, parsed.options, host, oldProgram );
+  };
 
 }

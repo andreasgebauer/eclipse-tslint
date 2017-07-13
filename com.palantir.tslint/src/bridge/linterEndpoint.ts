@@ -1,5 +1,5 @@
 
-interface Request {
+export interface Request {
   endpoint: string;
   method: string;
   arguments: any[];

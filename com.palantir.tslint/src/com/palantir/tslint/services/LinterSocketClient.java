@@ -20,6 +20,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 
 import com.google.common.base.Charsets;
@@ -29,23 +30,11 @@ import com.google.common.base.Charsets;
  */
 public class LinterSocketClient extends JsonBasedLinterClient {
 
-    private Socket socket;
+    private int port;
 
     public LinterSocketClient(int port) {
-        this(setup(port));
-    }
-
-    public LinterSocketClient(Socket socket) {
-        super(reader(socket), writer(socket));
-        this.socket = socket;
-    }
-
-    private static Socket setup(int port) {
-        try {
-            return new Socket((String) null, port);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        super(null, null);
+        this.port = port;
     }
 
     private static BufferedReader reader(Socket socket) {
@@ -66,10 +55,25 @@ public class LinterSocketClient extends JsonBasedLinterClient {
 
     @Override
     public void dispose() {
+    }
+
+    @Override
+    protected String processRequest(String requestJson) throws IOException {
+
+        Socket socket = new Socket();
         try {
-            this.socket.close();
+            socket.connect(new InetSocketAddress("localhost", this.port), 10000);
+
+            PrintWriter writer = writer(socket);
+            writer.println(requestJson);
+            writer.flush();
+
+            return super.read(reader(socket));
+
         } catch (IOException e) {
             throw new RuntimeException(e);
+        } finally {
+            socket.close();
         }
     }
 

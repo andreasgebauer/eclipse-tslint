@@ -17,6 +17,7 @@
 package com.palantir.tslint;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -26,6 +27,7 @@ import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.ui.texteditor.MarkerUtilities;
@@ -36,7 +38,6 @@ import com.palantir.tslint.failure.RuleFailure;
 import com.palantir.tslint.failure.RuleFailurePosition;
 import com.palantir.tslint.failure.RuleSeverity;
 import com.palantir.tslint.services.Bridge;
-import com.palantir.tslint.services.NodeFuckedUpException;
 import com.palantir.tslint.services.Request;
 
 final class Linter {
@@ -47,6 +48,17 @@ final class Linter {
 
     public Linter() {
         this.bridge = null;
+    }
+
+    public static void main(String[] args) {
+        Linter linter = new Linter();
+
+        linter.bridge = new Bridge(new File("/home/andreas/git/eclipse-tslint/com.palantir.tslint/main.js"));
+        linter.bridge.start();
+
+        linter.lint(
+            "/home/andreas/git/CMMS/cmms-frontend/src/main/ts/app/components/elements/documents/documents.component.spec.ts",
+            "/home/andreas/git/CMMS/cmms-frontend/src");
     }
 
     public void lint(IResource resource, String configurationPath) {
@@ -62,36 +74,51 @@ final class Linter {
             // remove any pre-existing markers for the given file
             deleteMarkers(file);
 
-            int tries = 0;
-            boolean error = false;
-            do {
-                try {
-                    // get a bridge
-                    if (this.bridge == null) {
-                        IPath projectLocation = resource.getProject().getRawLocation();
-                        String projectLocationPath = projectLocation.toOSString();
-                        File projectFile = new File(projectLocationPath);
-                        Request projectDirectoryRequest = new Request("setProjectDirectory", projectFile);
+            IPath projectLocation = resource.getProject().getRawLocation();
+            String projectLocationPath = projectLocation.toOSString();
 
-                        this.bridge = new Bridge();
-                        this.bridge.call(projectDirectoryRequest, Void.class);
-                    }
+            lint(resourcePath, projectLocationPath);
+        }
+    }
 
-                    Request request = new Request("lint", resourcePath);
-                    LintResult response = this.bridge.call(request, LintResult.class);
-                    if (response != null) {
-                        Logger.getLogger("Linter").info(resourceName + " failures: " + Arrays.asList(response.getFailures()));
-                        for (RuleFailure ruleFailure : response.getFailures()) {
-                            addMarker(ruleFailure);
-                        }
-                    }
-                    error = false;
-                } catch (NodeFuckedUpException e) {
-                    this.bridge.dispose();
-                    error = true;
+    private void lint(String resourcePath, String projectFile) {
+        int tries = 0;
+        boolean error = false;
+        do {
+            try {
+                // get a bridge
+                if (this.bridge == null) {
+                    File bundleFile = getBundleLocation();
+
+                    this.bridge = new Bridge(new File(bundleFile, "bin/main.js"));
+                    this.bridge.start();
+                } else if (this.bridge.isDisposed()) {
+                    this.bridge.start();
                 }
-            } while (error && tries++ <= 3);
 
+                Request request = new Request("lint", resourcePath, projectFile);
+                LintResult response = this.bridge.call(request, LintResult.class);
+                if (response != null) {
+                    Logger.getLogger("Linter").info(resourcePath + " failures: " + Arrays.asList(response.getFailures()));
+                    for (RuleFailure ruleFailure : response.getFailures()) {
+                        addMarker(ruleFailure);
+                    }
+                }
+                error = false;
+            } catch (RuntimeException e) {
+                e.printStackTrace();
+                if (this.bridge != null)
+                    this.bridge.dispose();
+                error = true;
+            }
+        } while (error && tries++ <= 3);
+    }
+
+    private File getBundleLocation() {
+        try {
+            return FileLocator.getBundleFile(TSLintPlugin.getDefault().getBundle());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 

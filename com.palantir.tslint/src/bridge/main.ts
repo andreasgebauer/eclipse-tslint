@@ -15,20 +15,30 @@
 */
 import { LinterEndpoint } from './linterEndpoint';
 import { LinterStdIOEndpoint } from './LinterStdInOutEndpoint';
-import { LinterSocketEndpoint } from "./linterSocketEndpoint";
+import { LinterSocketEndpoint } from './LinterSocketEndpoint';
+import { LinterManager } from './LinterManager';
 
-export class Main {
-  private endpoint: LinterEndpoint;
+module Bridge {
+  export class Main {
+    private endpoints: LinterEndpoint[] = new Array;
 
-  constructor() {
-    this.endpoint = new LinterSocketEndpoint();
+    constructor() {
+
+      const linterManager = new LinterManager();
+      this.endpoints.push( new LinterSocketEndpoint( linterManager ) );
+      this.endpoints.push( new LinterStdIOEndpoint( linterManager ) );
+    }
+
+    public run() {
+      var myProcess: any = process;
+
+      this.endpoints.forEach(( endpoint: LinterEndpoint ) => {
+        endpoint.start( myProcess );
+      } );
+    }
+
   }
-
-  public run() {
-    this.endpoint.start(process);
-  }
-
 }
 
-var main = new Main();
+var main = new Bridge.Main();
 main.run();

@@ -20,12 +20,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
-import org.eclipse.core.runtime.FileLocator;
-
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
-import com.palantir.tslint.TSLintPlugin;
 
 /**
  * This handles all requests for TSLint.
@@ -40,31 +37,34 @@ public final class Bridge {
     private Process nodeProcess;
 
     private LinterClient client;
+    private final File bridgeFile;
 
-    public Bridge() {
+    private boolean disposed;
+
+    public Bridge(File bridgeFile) {
+        this.bridgeFile = bridgeFile;
         // start the node process
-        this.start();
+        // this.start();
     }
 
     public void dispose() {
-        this.nodeProcess.destroy();
+        this.disposed = true;
 
-        this.nodeProcess = null;
+        if (this.nodeProcess != null) {
+            this.nodeProcess.destroy();
+            this.nodeProcess = null;
+        }
+
+        if (this.client != null)
+            this.client.dispose();
     }
 
-    private void start() {
+    public void start() {
+        // get the path to the bridge.js file
         File nodeFile = Bridge.findNode();
         String nodePath = nodeFile.getAbsolutePath();
 
-        // get the path to the bridge.js file
-        File bundleFile;
-        try {
-            bundleFile = FileLocator.getBundleFile(TSLintPlugin.getDefault().getBundle());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        File bridgeFile = new File(bundleFile, "bin/main.js");
-        String bridgePath = bridgeFile.getAbsolutePath();
+        String bridgePath = this.bridgeFile.getAbsolutePath();
 
         // construct the arguments
         ImmutableList.Builder<String> argsBuilder = ImmutableList.builder();
@@ -82,8 +82,13 @@ public final class Bridge {
         // add a shutdown hook to destroy the node process in case its not properly disposed
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread());
 
-        int port = 12345;
+        try {
+            Thread.sleep(3000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
 
+        int port = 12345;
         this.client = new LinterSocketClient(port);
     }
 
@@ -106,7 +111,8 @@ public final class Bridge {
             }
         }
 
-        throw new IllegalStateException("Could not find Node.js.");
+        throw new IllegalStateException("Could not find Node.js."
+                + " 'node' executable must be in env variable PATH.");
     }
 
     private static String getNodeFileName() {
@@ -130,5 +136,9 @@ public final class Bridge {
 
     public <T> T call(Request request, Class<T> resultType) {
         return this.client.call(request, resultType);
+    }
+
+    public boolean isDisposed() {
+        return this.disposed;
     }
 }

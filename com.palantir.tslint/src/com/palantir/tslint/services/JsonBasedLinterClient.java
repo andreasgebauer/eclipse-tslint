@@ -73,11 +73,19 @@ public abstract class JsonBasedLinterClient extends AbstractLinterClient {
 
         // write the request JSON to the bridge's stdin
         this.output.println(requestJson);
+        this.output.println();
+        this.output.flush();
 
         // read the response JSON from the bridge's stdout
+        return read(this.input);
+    }
+
+    protected String read(BufferedReader reader) throws IOException {
+
         String resultJson = null;
         do {
-            String line = this.input.readLine();
+
+            String line = reader.readLine();
 
             // process errors and logger statements
             if (line == null) {
@@ -92,16 +100,29 @@ public abstract class JsonBasedLinterClient extends AbstractLinterClient {
                 line = line.replaceAll("    ", "\t");
 
                 throw new RuntimeException("The following request caused an error to be thrown:" + LINE_SEPARATOR
-                        + requestJson + LINE_SEPARATOR
                         + line);
             } else if (line.startsWith(RESULT_PREFIX)) {
                 resultJson = line.substring(RESULT_PREFIX.length());
             } else { // log statement
                 System.out.println(line);
             }
+
         } while (resultJson == null);
 
         return resultJson;
+    }
+
+    @Override
+    public void dispose() {
+        super.dispose();
+
+        try {
+            this.input.close();
+        } catch (IOException e) {
+            // nothing to do
+        }
+
+        this.output.close();
     }
 
 }

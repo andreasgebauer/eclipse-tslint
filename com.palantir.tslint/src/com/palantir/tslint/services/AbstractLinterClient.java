@@ -38,6 +38,7 @@ public abstract class AbstractLinterClient implements LinterClient {
 
     @Override
     public void dispose() {
+
     }
 
     protected abstract <T> T call(Request request, JavaType resultType);

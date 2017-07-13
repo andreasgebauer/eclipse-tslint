@@ -29,9 +29,7 @@ import com.google.common.base.Charsets;
  */
 public class LinterStdIOClient extends JsonBasedLinterClient {
 
-    private BufferedReader nodeStdout;
     private BufferedReader nodeErrout;
-    private PrintWriter nodeStdin;
 
     public LinterStdIOClient(Process nodeProcess) {
         super(new BufferedReader(new InputStreamReader(nodeProcess.getInputStream(), Charsets.UTF_8)),
@@ -41,10 +39,8 @@ public class LinterStdIOClient extends JsonBasedLinterClient {
 
     @Override
     public void dispose() {
-        this.nodeStdin.close();
-
+        super.dispose();
         try {
-            this.nodeStdout.close();
             this.nodeErrout.close();
         } catch (IOException e) {
             throw new RuntimeException(e);

@@ -1,9 +1,14 @@
-import { LinterEndpoint } from "linterEndpoint";
+import { LinterEndpoint, Request } from "linterEndpoint";
 import * as readline from 'readline';
+import { LinterManager } from "./LinterManager";
+
 
 export class LinterStdIOEndpoint implements LinterEndpoint {
 
-  start(process): void {
+  constructor( private linterManager: LinterManager ) {
+  }
+
+  start( process: NodeJS.Process ): void {
     var myProcess: any = process;
     var rl = readline.createInterface( myProcess.stdin, myProcess.stdout );
 
@@ -20,20 +25,8 @@ export class LinterStdIOEndpoint implements LinterEndpoint {
 
   private processRequest( requestJson: string ) {
     try {
-      var request: Request = JSON.parse( requestJson );
-
-      // invoke the endpoint method with the supplied arguments
-      var method = this.endpoint[request.method];
-      var result = method.apply( this.endpoint, request.arguments );
-
-      // convert undefined to null (its basically the Java equivalent of void)
-      if ( result === undefined ) {
-        result = null;
-      }
-
-      // convert the result to JSON and write it to stdout
-      var resultJson = JSON.stringify( result );
-      console.log( "RESULT: " + resultJson );
+      const result = this.linterManager.processRequest( requestJson );
+      console.log( "RESULT: " + result );
     } catch ( e ) {
       var error: string;
 

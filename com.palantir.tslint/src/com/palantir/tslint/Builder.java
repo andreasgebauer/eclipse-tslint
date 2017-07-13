@@ -27,12 +27,15 @@ import org.eclipse.core.resources.IResourceVisitor;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.resources.ProjectScope;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.ILog;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.preferences.IEclipsePreferences;
 import org.eclipse.core.runtime.preferences.IScopeContext;
 
 public final class Builder extends IncrementalProjectBuilder {
+
+    private static final ILog LOGGER = TSLintPlugin.getDefault().getLog();
 
     public static final String BUILDER_ID = "com.palantir.tslint.tslintBuilder";
 
@@ -46,13 +49,13 @@ public final class Builder extends IncrementalProjectBuilder {
     @Override
     protected IProject[] build(int kind, Map<String, String> args, IProgressMonitor monitor) throws CoreException {
         if (kind == FULL_BUILD) {
-            fullBuild();
+            fullBuild(monitor);
         } else {
             IResourceDelta delta = getDelta(getProject());
             if (delta == null) {
-                fullBuild();
+                fullBuild(monitor);
             } else {
-                incrementalBuild(delta);
+                incrementalBuild(delta, monitor);
             }
         }
 
@@ -62,17 +65,22 @@ public final class Builder extends IncrementalProjectBuilder {
     @Override
     protected void clean(IProgressMonitor monitor) throws CoreException {
         getProject().deleteMarkers(Linter.MARKER_TYPE, true, IResource.DEPTH_INFINITE);
+        monitor.done();
     }
 
-    protected void fullBuild() throws CoreException {
-        getProject().accept(new ResourceVisitor());
+    protected void fullBuild(IProgressMonitor monitor) throws CoreException {
+        getProject().accept(new ResourceVisitor(monitor));
     }
 
-    protected void incrementalBuild(IResourceDelta delta) throws CoreException {
-        delta.accept(new DeltaVisitor());
+    protected void incrementalBuild(IResourceDelta delta, IProgressMonitor monitor) throws CoreException {
+        delta.accept(new DeltaVisitor(monitor));
     }
 
-    private void lint(IResource resource) {
+    private void lint(final IResource resource, final IProgressMonitor monitor) {
+        if (monitor.isCanceled()) {
+            return;
+        }
+
         IProject project = this.getProject();
         IScopeContext projectScope = new ProjectScope(project);
         IEclipsePreferences prefs = projectScope.getNode(TSLintPlugin.ID);
@@ -89,19 +97,35 @@ public final class Builder extends IncrementalProjectBuilder {
         } else {
             configurationPath = project.getFile("tslint.json").getRawLocation().toOSString();
         }
-        this.linter.lint(resource, configurationPath);
+
+        final String config = configurationPath;
+
+        this.linter.lint(resource, config);
     }
 
     private class ResourceVisitor implements IResourceVisitor {
+        private final IProgressMonitor monitor;
+
+        public ResourceVisitor(IProgressMonitor monitor) {
+            this.monitor = monitor;
+        }
+
         @Override
         public boolean visit(IResource resource) {
-            lint(resource);
+
+            lint(resource, this.monitor);
 
             return true;
         }
     }
 
     private class DeltaVisitor implements IResourceDeltaVisitor {
+        private final IProgressMonitor monitor;
+
+        public DeltaVisitor(IProgressMonitor monitor) {
+            this.monitor = monitor;
+        }
+
         @Override
         public boolean visit(IResourceDelta delta) throws CoreException {
             IResource resource = delta.getResource();
@@ -109,7 +133,7 @@ public final class Builder extends IncrementalProjectBuilder {
             switch (delta.getKind()) {
                 case IResourceDelta.ADDED:
                 case IResourceDelta.CHANGED:
-                    lint(resource);
+                    lint(resource, this.monitor);
                     break;
             }
 

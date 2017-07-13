@@ -13,21 +13,15 @@
     "moduleResolution": "node",
     "outDir": "../../bin",
     "sourceMap": true,
-    "target": "es5",
+    "target": "es6",
     "typeRoots": [
       "../../node_modules/@types"
     ],
-    "types": [ ],
     "noUnusedParameters": false,
     "noUnusedLocals": false,
     "allowUnreachableCode": false,
     "pretty": true
   },
-  "exclude": [
-    "test.ts",
-    "test/**",
-    "**/*.spec.*",
-    "node.d.ts"
-  ],
+  "exclude": [ ],
   "compileOnSave": true
 }

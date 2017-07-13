@@ -5,15 +5,17 @@
     "compile": "tsc -p src/bridge"
   },
   "dependencies": {
-    "@types/glob": "^5.0.30",
     "glob": "7.1.2",
     "socket.io": "^2.0.3",
-    "tslint": "~5.2.0",
-    "typescript": "2.3.4"
+    "tslint": "~5.3.0"
   },
   "devDependencies": {
-    "@types/node": "^8.0.9",
+    "@types/glob": "^5.0.30",
+    "@types/node": "^8.0.10",
+    "@types/socket.io": "^1.4.29",
     "grunt": "1.0.1",
-    "grunt-ts": "5.5.1"
+    "grunt-ts": "5.5.1",
+    "typescript": "2.3.4",
+    "typings": "^2.1.1"
   }
 }
