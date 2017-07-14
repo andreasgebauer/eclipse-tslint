@@ -29,6 +29,7 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.FileLocator;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.ui.texteditor.MarkerUtilities;
 
@@ -42,122 +43,115 @@ import com.palantir.tslint.services.Request;
 
 final class Linter {
 
-    public static final String MARKER_TYPE = "com.palantir.tslint.tslintProblem";
+  public static final String MARKER_TYPE = "com.palantir.tslint.tslintProblem";
 
-    private Bridge bridge;
+  private Bridge bridge;
 
-    public Linter() {
-        this.bridge = null;
-    }
+  public Linter() {
+    this.bridge = null;
+  }
 
-    public static void main(String[] args) {
-        Linter linter = new Linter();
+  public void lint(IFile resource, IProgressMonitor monitor) {
+    String resourcePath = resource.getRawLocation().toPortableString();
+    monitor.subTask("linting " + resourcePath);
 
-        linter.bridge = new Bridge(new File("/home/andreas/git/eclipse-tslint/com.palantir.tslint/main.js"));
-        linter.bridge.start();
+    // remove any pre-existing markers for the given file
+    deleteMarkers(resource);
 
-        linter.lint(
-            "/home/andreas/git/CMMS/cmms-frontend/src/main/ts/app/components/elements/documents/documents.component.spec.ts",
-            "/home/andreas/git/CMMS/cmms-frontend/src");
-    }
+    IPath projectLocation = resource.getProject().getRawLocation();
+    String projectLocationPath = projectLocation.toPortableString();
 
-    public void lint(IResource resource, String configurationPath) {
-        String resourceName = resource.getName();
-        if (resource instanceof IFile &&
-                (resourceName.endsWith(".ts") || resourceName.endsWith(".tsx")) &&
-                !resourceName.endsWith(".d.ts")) {
-            IFile file = (IFile) resource;
-            String resourcePath = resource.getRawLocation().toOSString();
+    lint(resourcePath, projectLocationPath);
 
-            Logger.getLogger("Linter").info("Analyzing " + resourcePath);
+    monitor.worked(1);
+  }
 
-            // remove any pre-existing markers for the given file
-            deleteMarkers(file);
+  public boolean isLintable(IResource resource) {
+    String resourceName = resource.getName();
 
-            IPath projectLocation = resource.getProject().getRawLocation();
-            String projectLocationPath = projectLocation.toOSString();
+    return resource instanceof IFile &&
+        (resourceName.endsWith(".ts") || resourceName.endsWith(".tsx")) &&
+        !resourceName.endsWith(".d.ts");
+  }
 
-            lint(resourcePath, projectLocationPath);
+  private void lint(String resourcePath, String projectFile) {
+    int tries = 0;
+    boolean error = false;
+    do {
+      try {
+        // get a bridge
+        if (this.bridge == null) {
+          File bundleFile = getBundleLocation();
+
+          this.bridge = new Bridge(new File(bundleFile, "bin/main.js"));
+          this.bridge.start();
+        } else if (this.bridge.isDisposed()) {
+          this.bridge.start();
         }
-    }
 
-    private void lint(String resourcePath, String projectFile) {
-        int tries = 0;
-        boolean error = false;
-        do {
-            try {
-                // get a bridge
-                if (this.bridge == null) {
-                    File bundleFile = getBundleLocation();
-
-                    this.bridge = new Bridge(new File(bundleFile, "bin/main.js"));
-                    this.bridge.start();
-                } else if (this.bridge.isDisposed()) {
-                    this.bridge.start();
-                }
-
-                Request request = new Request("lint", resourcePath, projectFile);
-                LintResult response = this.bridge.call(request, LintResult.class);
-                if (response != null) {
-                    Logger.getLogger("Linter").info(resourcePath + " failures: " + Arrays.asList(response.getFailures()));
-                    for (RuleFailure ruleFailure : response.getFailures()) {
-                        addMarker(ruleFailure);
-                    }
-                }
-                error = false;
-            } catch (RuntimeException e) {
-                e.printStackTrace();
-                if (this.bridge != null)
-                    this.bridge.dispose();
-                error = true;
-            }
-        } while (error && tries++ <= 3);
-    }
-
-    private File getBundleLocation() {
-        try {
-            return FileLocator.getBundleFile(TSLintPlugin.getDefault().getBundle());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        Request request = new Request("lint", resourcePath, projectFile);
+        LintResult response = this.bridge.call(request, LintResult.class);
+        if (response != null) {
+          Logger.getLogger("Linter").info(resourcePath + " failures: " + Arrays.asList(response.getFailures()));
+          for (RuleFailure ruleFailure : response.getFailures()) {
+            addMarker(ruleFailure);
+          }
         }
+        error = false;
+      } catch (RuntimeException e) {
+        e.printStackTrace();
+        if (this.bridge != null)
+          this.bridge.dispose();
+        error = true;
+      }
+    } while (error && tries++ <= 3);
+  }
+
+  private File getBundleLocation() {
+    try {
+      return FileLocator.getBundleFile(TSLintPlugin.getDefault().getBundle());
+    } catch (IOException e) {
+      throw new RuntimeException(e);
     }
+  }
 
-    private void addMarker(RuleFailure ruleViolation) {
-        try {
-            Path path = new Path(ruleViolation.getName());
-            IFile file = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(path);
+  private void addMarker(RuleFailure ruleViolation) {
+    try {
+      Path path = new Path(ruleViolation.getName());
+      IFile file = ResourcesPlugin.getWorkspace().getRoot().getFileForLocation(path);
 
-            RuleFailurePosition startPosition = ruleViolation.getStartPosition();
-            RuleFailurePosition endPosition = ruleViolation.getEndPosition();
+      RuleFailurePosition startPosition = ruleViolation.getStartPosition();
+      RuleFailurePosition endPosition = ruleViolation.getEndPosition();
 
-            RuleSeverity severity = ruleViolation.getRuleSeverity();
+      RuleSeverity severity = ruleViolation.getRuleSeverity();
 
-            int markerSeverity = IMarker.SEVERITY_WARNING;
-            switch (severity) {
-                case ERROR:
-                    markerSeverity = IMarker.SEVERITY_ERROR;
-            }
+      int markerSeverity = IMarker.SEVERITY_WARNING;
+      switch (severity) {
+      case ERROR:
+        markerSeverity = IMarker.SEVERITY_ERROR;
+        break;
+      }
 
-            Map<String, Object> attributes = Maps.newHashMap();
-            attributes.put(IMarker.LINE_NUMBER, startPosition.getLine() + 1);
-            attributes.put(IMarker.CHAR_START, startPosition.getPosition());
-            attributes.put(IMarker.CHAR_END, endPosition.getPosition());
-            attributes.put(IMarker.MESSAGE, ruleViolation.getFailure());
-            attributes.put(IMarker.PRIORITY, IMarker.PRIORITY_NORMAL);
-            attributes.put(IMarker.SEVERITY, markerSeverity);
+      Map<String, Object> attributes = Maps.newHashMap();
+      attributes.put(IMarker.LINE_NUMBER, startPosition.getLine() + 1);
+      attributes.put(IMarker.CHAR_START, startPosition.getPosition());
+      attributes.put(IMarker.CHAR_END, endPosition.getPosition());
+      attributes.put(IMarker.MESSAGE, ruleViolation.getFailure());
+      attributes.put(IMarker.PRIORITY, IMarker.PRIORITY_NORMAL);
+      attributes.put(IMarker.SEVERITY, markerSeverity);
 
-            MarkerUtilities.createMarker(file, attributes, MARKER_TYPE);
-        } catch (CoreException e) {
-            throw new RuntimeException(e);
-        }
+      MarkerUtilities.createMarker(file, attributes, MARKER_TYPE);
+    } catch (CoreException e) {
+      throw new RuntimeException(e);
     }
+  }
 
-    private void deleteMarkers(IFile file) {
-        try {
-            file.deleteMarkers(MARKER_TYPE, true, IResource.DEPTH_INFINITE);
-        } catch (CoreException e) {
-            throw new RuntimeException(e);
-        }
+  private void deleteMarkers(IFile file) {
+    try {
+      file.deleteMarkers(MARKER_TYPE, true, IResource.DEPTH_INFINITE);
+    } catch (CoreException e) {
+      throw new RuntimeException(e);
     }
+  }
 
 }
