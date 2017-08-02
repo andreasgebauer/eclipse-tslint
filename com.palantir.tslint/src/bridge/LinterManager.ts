@@ -170,7 +170,7 @@ export class LinterManager {
     var parseConfigHost = {
       fileExists: fs.existsSync,
       readDirectory: ts.sys.readDirectory,
-      readFile: function(file) { return fs.readFileSync(file, "utf8"); },
+      readFile: (file: string) => fs.readFileSync(file, "utf8"),
       useCaseSensitiveFileNames: true,
     };
     this.logger.log('parsing json config file');
