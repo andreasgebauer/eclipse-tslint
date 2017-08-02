@@ -54,10 +54,6 @@ public class LinterSocketClient extends JsonBasedLinterClient {
     }
 
     @Override
-    public void dispose() {
-    }
-
-    @Override
     protected String processRequest(String requestJson) throws IOException {
 
         Socket socket = new Socket();
