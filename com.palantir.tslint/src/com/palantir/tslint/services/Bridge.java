@@ -90,6 +90,7 @@ public final class Bridge {
 
         int port = 12345;
         this.client = new LinterSocketClient(port);
+        this.disposed = false;
     }
 
     private static File findNode() {
